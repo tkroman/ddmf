@@ -80,18 +80,11 @@ class LockingInMemoryJobService(nodeCount: Int,
   }
 
   override def summary(): Summary = {
-    // have to sync to keep invariant (queue.count() + nodes.count() == #sumbitted)
-    // otherwise we risk inconsistent results b/w reads on `queue` & `nodes`
-    syncNodesAndQueue.lock()
-    try {
-      Summary(
-        queue.count(),
-        nodes.count(),
-        history.succeeded(),
-        history.failed()
-      )
-    } finally {
-      syncNodesAndQueue.unlock()
-    }
+    Summary(
+      queue.count(),
+      nodes.count(),
+      history.succeeded(),
+      history.failed()
+    )
   }
 }
