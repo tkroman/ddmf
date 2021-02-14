@@ -49,6 +49,9 @@ class JobQueue {
   }
 
   // potentially O(n) (expensive) but we expect this to happen rarely (if ever)
+  // can be worked around if we keep another map of `working set` entires,
+  // i.e. QueuedJob instances so that we can remove in (amortized) O(1) from the queue
+  // if we switch to ConcurrentSkipListSet.
   def remove(id: String): Boolean = {
     lock.lock()
     try {

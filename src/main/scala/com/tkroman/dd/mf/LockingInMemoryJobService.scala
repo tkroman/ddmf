@@ -2,6 +2,10 @@ package com.tkroman.dd.mf
 
 import java.util.concurrent.locks.ReentrantLock
 
+// performance notes: locks on submit()/finish(),
+// but most operations inside locked sections are constant-time
+// so we don't take too big a performance hit.
+// For detailed consideration see comments on corresponding methods.
 class LockingInMemoryJobService(nodeCount: Int,
                                 historySize: Int) extends JobService {
   // in real-life scenarios these fields
@@ -40,7 +44,6 @@ class LockingInMemoryJobService(nodeCount: Int,
   //  bounded by the natural rate of submit->finish cycle.
   override def submit(id: String, priority: Int): Unit = {
     val rj = Job(id, priority, JobStatus.Running)
-    // sync b/c we don't want races between
     syncNodesAndQueue.lock()
     try {
       if (!nodes.offerTask(rj.id)) {
