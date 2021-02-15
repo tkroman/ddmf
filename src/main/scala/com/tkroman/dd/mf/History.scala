@@ -1,41 +1,34 @@
 package com.tkroman.dd.mf
 
-import java.util.Collections
+
+import com.tkroman.dd.mf.JobStatus.{Failed, Succeeded}
+
+import java.util
 import java.util.concurrent.atomic.AtomicInteger
 
-
-class History(size: Int) {
-  // FIXME: should use sth like Caffeine for a proper
-  //  LRU/size-bounded map implementation in production
-  private val h = Collections.synchronizedMap(
-    new java.util.LinkedHashMap[String, JobStatus]() {
+// logic: since we handle this in a single thread,
+// we can avoid synchronization on the map
+class History(capacity: Int) {
+  private val history: java.util.Map[String, JobStatus] =
+    new util.LinkedHashMap[String, JobStatus]() {
       override def removeEldestEntry(eldest: java.util.Map.Entry[String, JobStatus]): Boolean = {
-        size() > History.this.size
+        // evict if capacity exceeded
+        size() > capacity
       }
     }
-  )
   private val failedCount = new AtomicInteger()
   private val succeededCount = new AtomicInteger()
 
-  def add(id: String, status: JobStatus): Unit = {
-    val prev = h.put(id, status)
-    // turn this into HTTP 500 since we don't know how we ended up here
-    if (prev != null) {
-      throw new IllegalStateException(
-        s"job $id ($status) is already present in history"
-      )
-    }
-    if (status == JobStatus.Failed) {
-      failedCount.incrementAndGet()
-    } else if (status == JobStatus.Succeeded) {
+  def add(id: String, s: JobStatus): Unit = {
+    if (s == Succeeded) {
       succeededCount.incrementAndGet()
     }
+    if (s == Failed) {
+      failedCount.incrementAndGet()
+    }
+    history.put(id, s)
   }
-
-  def get(id: String): Option[JobStatus] = {
-    Option(h.get(id))
-  }
-
-  def failed(): Int = failedCount.get()
+  def get(id: String) = history.get(id)
   def succeeded(): Int = succeededCount.get()
+  def failed(): Int = failedCount.get()
 }

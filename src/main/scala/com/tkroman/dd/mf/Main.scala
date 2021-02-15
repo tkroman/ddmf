@@ -13,7 +13,7 @@ object Main extends cask.MainRoutes with LazyLogging {
   logger.info(s"Starting with $numberOfNodes nodes & $historySize history entries")
 
   private val jobs: JobService =
-    new LockingInMemoryJobService(numberOfNodes, historySize)
+    new QueueBasedInMemoryJobService(numberOfNodes, historySize)
 
   override def host: String = "0.0.0.0"
 

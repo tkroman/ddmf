@@ -1,66 +1,48 @@
 package com.tkroman.dd.mf
 
+
 import java.util.Comparator
-import java.util.concurrent.PriorityBlockingQueue
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.locks.ReentrantLock
+import java.util.concurrent._
+import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 
-
-class JobQueue {
-  private val lock = new ReentrantLock(true)
-  private val seq = new AtomicLong()
-  private val queue = new PriorityBlockingQueue[QueuedJob](
-    16,
-    Comparator
-      .comparingInt[QueuedJob](-_.get.priority)
-      .thenComparingLong(_.seq)
+// logic: keep submission/finish queues separately
+// will be used by the Nodes class
+// thread-safe if used from multiple thread for submissions/finishes +
+// another thread for processing
+class JobQueue() {
+  private val in = new ConcurrentSkipListMap[(Int, Long), String](
+    Comparator.comparingInt[(Int, Long)](-_._1).thenComparingLong(_._2)
   )
-  private val s = new java.util.HashSet[String]()
 
-  def enqueue(j: Job): Unit = {
-    lock.lock()
-    try {
-      queue.add(QueuedJob(j, seq.getAndIncrement()))
-      s.add(j.id)
-    } finally {
-      lock.unlock()
-    }
+  private val out = new ConcurrentHashMap[String, JobStatus]()
+
+  private val pc = new AtomicInteger()
+  private val seq = new AtomicLong()
+
+  def submissionCount(): Int = in.size()
+
+  def hasSubmitted() = !in.isEmpty
+  def hasFinished() = !out.isEmpty
+
+  // most expensive call, could have a bidirectional map
+  // but would have to pay sync costs so decided not to go with that
+  def hasSubmission(id: String) = in.containsValue(id)
+
+  def submit(id: String, prio: Int): Unit = {
+    in.put(prio -> seq.getAndIncrement(), id)
+    pc.incrementAndGet()
   }
 
-  def dequeue(): Option[Job] = {
-    lock.lock()
-    try {
-      Option(queue.poll()).map { j =>
-        s.remove(j.get.id)
-        j.get
-      }
-    } finally {
-      lock.unlock()
-    }
+  def pollNextSubmitted() = {
+    pc.decrementAndGet()
+    in.pollFirstEntry()
   }
 
-  def has(id: String): Boolean = {
-    lock.lock()
-    try {
-      s.contains(id)
-    } finally {
-      lock.unlock()
-    }
+  def removeNextFinished(id: String) = {
+    out.remove(id)
   }
 
-  // potentially O(n) (expensive) but we expect this to happen rarely (if ever)
-  // can be worked around if we keep another map of `working set` entires,
-  // i.e. QueuedJob instances so that we can remove in (amortized) O(1) from the queue
-  // if we switch to ConcurrentSkipListSet.
-  def remove(id: String): Boolean = {
-    lock.lock()
-    try {
-      s.remove(id)
-      queue.removeIf(_.get.id == id)
-    } finally {
-      lock.unlock()
-    }
+  def finish(id: String, status: JobStatus): Unit = {
+    out.put(id, status)
   }
-
-  def count() = s.size()
 }
